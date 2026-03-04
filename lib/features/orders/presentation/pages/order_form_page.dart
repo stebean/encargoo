@@ -25,9 +25,11 @@ class _OrderFormPageState extends ConsumerState<OrderFormPage> {
   bool _clientError = false;
   DateTime? _deliveryDate;
   bool _clearDelivery = false;
-  final _photos = <(File, String)>[];
-  // Local cache of edited descriptions for existing photos (photoId -> newDesc)
+  // New photos to upload: (file, description, price)
+  final _photos = <(File, String, double)>[];
+  // Local cache of edited fields for existing photos
   final _photoDescChanges = <String, String>{};
+  final _photoPriceChanges = <String, double>{};
   final _picker = ImagePicker();
   bool _loading = false;
   final _form = GlobalKey<FormState>();
@@ -60,7 +62,7 @@ class _OrderFormPageState extends ConsumerState<OrderFormPage> {
   Future<void> _pickImage(ImageSource source) async {
     final xfile = await _picker.pickImage(source: source, imageQuality: 80, maxWidth: 1200);
     if (xfile == null) return;
-    setState(() => _photos.add((File(xfile.path), '')));
+    setState(() => _photos.add((File(xfile.path), '', 0.0)));
   }
 
   // ── Client picker bottom sheet ──────────────────────────────────────────
@@ -140,13 +142,16 @@ class _OrderFormPageState extends ConsumerState<OrderFormPage> {
         notes: _notesCtrl.text.trim().isEmpty ? null : _notesCtrl.text.trim(),
       );
       if (ok) {
-        // Save description changes for existing photos
+        // Save description + price changes for existing photos
         for (final entry in _photoDescChanges.entries) {
           await ref.read(ordersProvider.notifier).updatePhotoDescription(entry.key, entry.value);
         }
+        for (final entry in _photoPriceChanges.entries) {
+          await ref.read(ordersProvider.notifier).updatePhotoPrice(entry.key, entry.value);
+        }
         // Upload any new photos added in edit mode
-        for (final (file, desc) in _photos) {
-          await ref.read(ordersProvider.notifier).addPhotoToOrder(widget.orderId!, file, desc);
+        for (final (file, desc, price) in _photos) {
+          await ref.read(ordersProvider.notifier).addPhotoToOrder(widget.orderId!, file, desc, price: price);
         }
         // Reload to reflect all changes
         await ref.read(ordersProvider.notifier).loadOrders();
@@ -296,6 +301,7 @@ class _OrderFormPageState extends ConsumerState<OrderFormPage> {
                 photo: photo,
                 // Store changes locally — saved to DB only on submit
                 onDescriptionChanged: (desc) => _photoDescChanges[photo.id] = desc,
+                onPriceChanged: (price) => _photoPriceChanges[photo.id] = price,
                 onRemove: () =>
                     ref.read(ordersProvider.notifier).deletePhoto(photo.id, photo.photoUrl),
               )),
@@ -306,7 +312,9 @@ class _OrderFormPageState extends ConsumerState<OrderFormPage> {
               ..._photos.asMap().entries.map((e) => _PhotoEditItem(
                 file: e.value.$1,
                 description: e.value.$2,
-                onDescriptionChanged: (d) => setState(() => _photos[e.key] = (e.value.$1, d)),
+                price: e.value.$3,
+                onDescriptionChanged: (d) => setState(() => _photos[e.key] = (e.value.$1, d, e.value.$3)),
+                onPriceChanged: (p) => setState(() => _photos[e.key] = (e.value.$1, e.value.$2, p)),
                 onRemove: () => setState(() => _photos.removeAt(e.key)),
               )),
             ] else if (!isEdit) ...[
@@ -575,13 +583,17 @@ class _ClientTile extends StatelessWidget {
 class _PhotoEditItem extends StatefulWidget {
   final File file;
   final String description;
+  final double price;
   final ValueChanged<String> onDescriptionChanged;
+  final ValueChanged<double> onPriceChanged;
   final VoidCallback onRemove;
 
   const _PhotoEditItem({
     required this.file,
     required this.description,
+    this.price = 0,
     required this.onDescriptionChanged,
+    required this.onPriceChanged,
     required this.onRemove,
   });
 
@@ -591,11 +603,13 @@ class _PhotoEditItem extends StatefulWidget {
 
 class _PhotoEditItemState extends State<_PhotoEditItem> {
   late final TextEditingController _ctrl;
+  late final TextEditingController _priceCtrl;
 
   @override
   void initState() {
     super.initState();
     _ctrl = TextEditingController(text: widget.description);
+    _priceCtrl = TextEditingController(text: widget.price > 0 ? widget.price.toStringAsFixed(widget.price == widget.price.toInt() ? 0 : 2) : '');
   }
 
   @override
@@ -609,6 +623,7 @@ class _PhotoEditItemState extends State<_PhotoEditItem> {
   @override
   void dispose() {
     _ctrl.dispose();
+    _priceCtrl.dispose();
     super.dispose();
   }
 
@@ -654,14 +669,10 @@ class _PhotoEditItemState extends State<_PhotoEditItem> {
                   child: Image.file(widget.file, width: 80, height: 80, fit: BoxFit.cover),
                 ),
                 Positioned(
-                  bottom: 4,
-                  right: 4,
+                  bottom: 4, right: 4,
                   child: Container(
                     padding: const EdgeInsets.all(3),
-                    decoration: BoxDecoration(
-                      color: Colors.black54,
-                      borderRadius: BorderRadius.circular(4),
-                    ),
+                    decoration: BoxDecoration(color: Colors.black54, borderRadius: BorderRadius.circular(4)),
                     child: const Icon(Icons.fullscreen_rounded, size: 14, color: Colors.white),
                   ),
                 ),
@@ -670,19 +681,44 @@ class _PhotoEditItemState extends State<_PhotoEditItem> {
           ),
           const SizedBox(width: 12),
           Expanded(
-            child: TextField(
-              controller: _ctrl,
-              decoration: const InputDecoration(
-                hintText: 'Descripción de la foto…',
-                filled: false,
-                border: InputBorder.none,
-                enabledBorder: InputBorder.none,
-                focusedBorder: InputBorder.none,
-                contentPadding: EdgeInsets.zero,
-              ),
-              style: AppTextStyles.bodySmall,
-              maxLines: 3,
-              onChanged: widget.onDescriptionChanged,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                TextField(
+                  controller: _ctrl,
+                  decoration: const InputDecoration(
+                    hintText: 'Descripción…',
+                    filled: false,
+                    border: InputBorder.none,
+                    enabledBorder: InputBorder.none,
+                    focusedBorder: InputBorder.none,
+                    contentPadding: EdgeInsets.zero,
+                  ),
+                  style: AppTextStyles.bodySmall,
+                  maxLines: 2,
+                  onChanged: widget.onDescriptionChanged,
+                ),
+                const SizedBox(height: 6),
+                TextField(
+                  controller: _priceCtrl,
+                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  decoration: const InputDecoration(
+                    hintText: 'Precio',
+                    prefixText: r'$',
+                    filled: false,
+                    border: InputBorder.none,
+                    enabledBorder: InputBorder.none,
+                    focusedBorder: UnderlineInputBorder(borderSide: BorderSide(color: AppColors.accent, width: 1)),
+                    contentPadding: EdgeInsets.zero,
+                    isDense: true,
+                  ),
+                  style: AppTextStyles.bodySmall.copyWith(fontWeight: FontWeight.w600, color: AppColors.accent),
+                  onChanged: (v) {
+                    final parsed = double.tryParse(v.replaceAll(',', '.')) ?? 0;
+                    widget.onPriceChanged(parsed);
+                  },
+                ),
+              ],
             ),
           ),
           IconButton(
@@ -701,11 +737,13 @@ class _PhotoEditItemState extends State<_PhotoEditItem> {
 class _ExistingPhotoEditItem extends StatefulWidget {
   final OrderPhotoEntity photo;
   final ValueChanged<String> onDescriptionChanged;
+  final ValueChanged<double> onPriceChanged;
   final Future<bool> Function() onRemove;
 
   const _ExistingPhotoEditItem({
     required this.photo,
     required this.onDescriptionChanged,
+    required this.onPriceChanged,
     required this.onRemove,
   });
 
@@ -715,16 +753,23 @@ class _ExistingPhotoEditItem extends StatefulWidget {
 
 class _ExistingPhotoEditItemState extends State<_ExistingPhotoEditItem> {
   late final TextEditingController _ctrl;
+  late final TextEditingController _priceCtrl;
 
   @override
   void initState() {
     super.initState();
     _ctrl = TextEditingController(text: widget.photo.description);
+    _priceCtrl = TextEditingController(
+      text: widget.photo.price > 0
+          ? widget.photo.price.toStringAsFixed(widget.photo.price == widget.photo.price.toInt() ? 0 : 2)
+          : '',
+    );
   }
 
   @override
   void dispose() {
     _ctrl.dispose();
+    _priceCtrl.dispose();
     super.dispose();
   }
 
@@ -793,19 +838,44 @@ class _ExistingPhotoEditItemState extends State<_ExistingPhotoEditItem> {
           ),
           const SizedBox(width: 12),
           Expanded(
-            child: TextField(
-              controller: _ctrl,
-              decoration: const InputDecoration(
-                hintText: 'Descripción de la foto…',
-                filled: false,
-                border: InputBorder.none,
-                enabledBorder: InputBorder.none,
-                focusedBorder: InputBorder.none,
-                contentPadding: EdgeInsets.zero,
-              ),
-              style: AppTextStyles.bodySmall,
-              maxLines: 3,
-              onChanged: widget.onDescriptionChanged,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                TextField(
+                  controller: _ctrl,
+                  decoration: const InputDecoration(
+                    hintText: 'Descripción de la foto…',
+                    filled: false,
+                    border: InputBorder.none,
+                    enabledBorder: InputBorder.none,
+                    focusedBorder: InputBorder.none,
+                    contentPadding: EdgeInsets.zero,
+                  ),
+                  style: AppTextStyles.bodySmall,
+                  maxLines: 2,
+                  onChanged: widget.onDescriptionChanged,
+                ),
+                const SizedBox(height: 6),
+                TextField(
+                  controller: _priceCtrl,
+                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  decoration: const InputDecoration(
+                    hintText: 'Precio',
+                    prefixText: r'$',
+                    filled: false,
+                    border: InputBorder.none,
+                    enabledBorder: InputBorder.none,
+                    focusedBorder: UnderlineInputBorder(borderSide: BorderSide(color: AppColors.accent, width: 1)),
+                    contentPadding: EdgeInsets.zero,
+                    isDense: true,
+                  ),
+                  style: AppTextStyles.bodySmall.copyWith(fontWeight: FontWeight.w600, color: AppColors.accent),
+                  onChanged: (v) {
+                    final parsed = double.tryParse(v.replaceAll(',', '.')) ?? 0;
+                    widget.onPriceChanged(parsed);
+                  },
+                ),
+              ],
             ),
           ),
           IconButton(

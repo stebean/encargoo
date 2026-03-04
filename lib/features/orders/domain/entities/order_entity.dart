@@ -26,6 +26,7 @@ class OrderPhotoEntity {
   final String photoUrl;
   final String description;
   final int sortOrder;
+  final double price;
 
   const OrderPhotoEntity({
     required this.id,
@@ -33,6 +34,7 @@ class OrderPhotoEntity {
     required this.photoUrl,
     required this.description,
     required this.sortOrder,
+    this.price = 0,
   });
 }
 
@@ -41,6 +43,7 @@ class OrderEntity {
   final String workspaceId;
   final String? clientId;
   final String? clientName;
+  final String? clientPhone;
   final String createdBy;
   final String? createdByName;
   final DateTime createdAt;
@@ -54,6 +57,7 @@ class OrderEntity {
     required this.workspaceId,
     this.clientId,
     this.clientName,
+    this.clientPhone,
     required this.createdBy,
     this.createdByName,
     required this.createdAt,
@@ -62,6 +66,9 @@ class OrderEntity {
     this.notes,
     this.photos = const [],
   });
+
+  /// Total price = sum of all photo prices
+  double get totalPrice => photos.fold(0, (sum, p) => sum + p.price);
 
   bool get isOverdue {
     if (deliveryDate == null) return false;
@@ -86,6 +93,7 @@ class OrderEntity {
     String? workspaceId,
     String? clientId,
     String? clientName,
+    String? clientPhone,
     String? createdBy,
     String? createdByName,
     DateTime? createdAt,
@@ -100,6 +108,7 @@ class OrderEntity {
       workspaceId: workspaceId ?? this.workspaceId,
       clientId: clientId ?? this.clientId,
       clientName: clientName ?? this.clientName,
+      clientPhone: clientPhone ?? this.clientPhone,
       createdBy: createdBy ?? this.createdBy,
       createdByName: createdByName ?? this.createdByName,
       createdAt: createdAt ?? this.createdAt,

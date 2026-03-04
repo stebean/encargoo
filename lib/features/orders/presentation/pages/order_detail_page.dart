@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:url_launcher/url_launcher.dart';
+import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/constants/app_text_styles.dart';
 import '../../../../core/utils/date_helper.dart';
@@ -9,6 +11,7 @@ import '../../presentation/notifiers/orders_notifier.dart';
 import '../../domain/entities/order_entity.dart';
 import '../../../../shared/widgets/status_badge.dart';
 import '../../../auth/presentation/notifiers/auth_notifier.dart';
+import '../../../settings/presentation/notifiers/message_template_provider.dart';
 
 class OrderDetailPage extends ConsumerWidget {
   final String id;
@@ -27,6 +30,13 @@ class OrderDetailPage extends ConsumerWidget {
       );
     }
 
+    final hasPhotos = order.photos.isNotEmpty;
+    final totalPrice = order.totalPrice;
+    final hasPrice = totalPrice > 0;
+    final isLista = order.status == OrderStatus.lista;
+    final hasClient = order.clientId != null;
+    final hasPhone = order.clientPhone != null && order.clientPhone!.isNotEmpty;
+
     return Scaffold(
       backgroundColor: AppColors.cream,
       appBar: AppBar(
@@ -43,8 +53,17 @@ class OrderDetailPage extends ConsumerWidget {
             ),
         ],
       ),
+      // WhatsApp FAB — always visible when there's a client
+      floatingActionButton: hasClient
+          ? FloatingActionButton(
+              onPressed: () => _sendWhatsApp(context, ref, order, hasPhone),
+              backgroundColor: isLista ? const Color(0xFF25D366) : AppColors.parchment,
+              elevation: isLista ? 4 : 1,
+              child: FaIcon(FontAwesomeIcons.whatsapp, size: 24, color: isLista ? Colors.white : const Color(0xFF25D366)),
+            )
+          : null,
       body: SingleChildScrollView(
-        padding: const EdgeInsets.all(20),
+        padding: const EdgeInsets.fromLTRB(20, 20, 20, 100),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -57,6 +76,7 @@ class OrderDetailPage extends ConsumerWidget {
               ],
             ),
             const SizedBox(height: 20),
+
             // Info card
             _InfoRow(label: 'Cliente', value: order.clientName ?? 'Sin cliente', icon: Icons.person_outline_rounded),
             _Divider(),
@@ -78,9 +98,35 @@ class OrderDetailPage extends ConsumerWidget {
               _Divider(),
               _InfoRow(label: 'Notas', value: order.notes!, icon: Icons.notes_rounded),
             ],
+
+            // ── Total price card ──────────────────────────────────────────
+            if (hasPhotos && hasPrice) ...[
+              const SizedBox(height: 20),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                decoration: BoxDecoration(
+                  color: AppColors.accentDeep,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.payments_outlined, color: Colors.white, size: 20),
+                    const SizedBox(width: 12),
+                    Text('Total del encargo', style: AppTextStyles.labelMedium.copyWith(color: Colors.white70)),
+                    const Spacer(),
+                    Text(
+                      '\$${totalPrice.toStringAsFixed(totalPrice == totalPrice.toInt() ? 0 : 2)}',
+                      style: AppTextStyles.headlineMedium.copyWith(color: Colors.white, fontSize: 20),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+
             const SizedBox(height: 24),
-            // Photos section
-            if (order.photos.isNotEmpty) ...[
+
+            // ── Photos section ────────────────────────────────────────────
+            if (hasPhotos) ...[
               Text('Fotos (${order.photos.length})', style: AppTextStyles.headlineSmall),
               const SizedBox(height: 12),
               ...order.photos.map((photo) => _PhotoItem(photo: photo)),
@@ -102,6 +148,66 @@ class OrderDetailPage extends ConsumerWidget {
         ),
       ),
     );
+  }
+
+  Future<void> _sendWhatsApp(BuildContext context, WidgetRef ref, OrderEntity order, bool hasPhone) async {
+    if (!hasPhone) {
+      if (!context.mounted) return;
+      await showDialog(
+        context: context,
+        builder: (_) => AlertDialog(
+          backgroundColor: AppColors.cream,
+          title: const Text('Sin número de teléfono', style: AppTextStyles.headlineSmall),
+          content: Text(
+            'El cliente "${order.clientName ?? 'este cliente'}" no tiene un número de teléfono registrado.\n\nVe a Clientes → edita el cliente y agrega su número para poder enviarle mensajes.',
+            style: AppTextStyles.bodyMedium,
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Entendido'),
+            ),
+          ],
+        ),
+      );
+      return;
+    }
+    // Read resolved template value directly from provider state
+    final template = ref.read(messageTemplateProvider).value ?? defaultMessageTemplate;
+    final clientName = order.clientName ?? 'cliente';
+    final totalPrice = order.totalPrice;
+    final totalStr = '\$${totalPrice.toStringAsFixed(totalPrice == totalPrice.toInt() ? 0 : 2)}';
+    final message = template
+        .replaceAll('{nombre}', clientName)
+        .replaceAll('\${total}', totalStr)
+        .replaceAll('{total}', totalStr);
+
+    String phone = order.clientPhone ?? '';
+    // Clean phone: keep only digits and leading +
+    String clean = phone.replaceAll(RegExp(r'[^\d+]'), '');
+    if (!clean.startsWith('+')) clean = '+52$clean';
+    final digitsOnly = clean.replaceAll(RegExp(r'\D'), '');
+
+    final encoded = Uri.encodeComponent(message);
+
+    // Try whatsapp:// deep link first (doesn't need manifest queries declaration)
+    final waUri = Uri.parse('whatsapp://send?phone=$digitsOnly&text=$encoded');
+    // Fallback HTTPS URI
+    final webUri = Uri.parse('https://wa.me/$digitsOnly?text=$encoded');
+
+    try {
+      await launchUrl(waUri, mode: LaunchMode.externalApplication);
+    } catch (_) {
+      try {
+        await launchUrl(webUri, mode: LaunchMode.externalApplication);
+      } catch (e) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('No se pudo abrir WhatsApp. ¿Está instalado?')),
+          );
+        }
+      }
+    }
   }
 
   Future<void> _confirmDelete(BuildContext context, WidgetRef ref, OrderEntity order) async {
@@ -136,6 +242,7 @@ class OrderDetailPage extends ConsumerWidget {
   }
 }
 
+// ── Info row ──────────────────────────────────────────────────────────────────
 class _InfoRow extends StatelessWidget {
   final String label;
   final String value;
@@ -153,9 +260,8 @@ class _InfoRow extends StatelessWidget {
         children: [
           Icon(icon, size: 16, color: AppColors.accent),
           const SizedBox(width: 12),
-          if (label.isNotEmpty) ...[
+          if (label.isNotEmpty)
             SizedBox(width: 90, child: Text(label, style: AppTextStyles.labelMedium)),
-          ],
           Expanded(child: Text(value, style: AppTextStyles.bodyMedium.copyWith(color: valueColor))),
         ],
       ),
@@ -168,6 +274,7 @@ class _Divider extends StatelessWidget {
   Widget build(BuildContext context) => const Divider(height: 1, color: AppColors.borderLight);
 }
 
+// ── Status selector ───────────────────────────────────────────────────────────
 class _StatusSelector extends ConsumerWidget {
   final OrderEntity order;
   const _StatusSelector({required this.order});
@@ -187,6 +294,7 @@ class _StatusSelector extends ConsumerWidget {
   }
 }
 
+// ── Photo item ────────────────────────────────────────────────────────────────
 class _PhotoItem extends StatelessWidget {
   final OrderPhotoEntity photo;
   const _PhotoItem({required this.photo});
@@ -205,6 +313,7 @@ class _PhotoItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final hasPrice = photo.price > 0;
     return GestureDetector(
       onTap: () => _openFullscreen(context),
       child: Container(
@@ -233,21 +342,50 @@ class _PhotoItem extends StatelessWidget {
                   right: 8,
                   child: Container(
                     padding: const EdgeInsets.all(4),
-                    decoration: BoxDecoration(
-                      color: Colors.black54,
-                      borderRadius: BorderRadius.circular(6),
-                    ),
+                    decoration: BoxDecoration(color: Colors.black54, borderRadius: BorderRadius.circular(6)),
                     child: const Icon(Icons.fullscreen_rounded, size: 16, color: Colors.white),
                   ),
                 ),
+                // Price badge on photo
+                if (hasPrice)
+                  Positioned(
+                    top: 8,
+                    left: 8,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: AppColors.accentDeep.withValues(alpha: 0.9),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Text(
+                        '\$${photo.price.toStringAsFixed(photo.price == photo.price.toInt() ? 0 : 2)}',
+                        style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 13),
+                      ),
+                    ),
+                  ),
               ],
             ),
-            if (photo.description.isNotEmpty)
+            if (photo.description.isNotEmpty || hasPrice)
               Padding(
                 padding: const EdgeInsets.all(12),
-                child: Text(
-                  photo.description,
-                  style: AppTextStyles.bodyMedium.copyWith(fontStyle: FontStyle.italic),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    if (photo.description.isNotEmpty)
+                      Text(photo.description, style: AppTextStyles.bodyMedium.copyWith(fontStyle: FontStyle.italic)),
+                    if (photo.description.isNotEmpty && hasPrice)
+                      const SizedBox(height: 6),
+                    if (hasPrice)
+                      Row(
+                        children: [
+                          const Icon(Icons.attach_money_rounded, size: 14, color: AppColors.accent),
+                          Text(
+                            '\$${photo.price.toStringAsFixed(photo.price == photo.price.toInt() ? 0 : 2)}',
+                            style: AppTextStyles.labelMedium.copyWith(color: AppColors.accent),
+                          ),
+                        ],
+                      ),
+                  ],
                 ),
               ),
           ],
@@ -278,7 +416,6 @@ class _PhotoReadOnlyViewerState extends State<_PhotoReadOnlyViewer> {
         child: Stack(
           fit: StackFit.expand,
           children: [
-            // Full image with zoom
             InteractiveViewer(
               minScale: 0.8,
               maxScale: 4.0,
@@ -309,7 +446,32 @@ class _PhotoReadOnlyViewerState extends State<_PhotoReadOnlyViewer> {
                 ),
               ),
             ),
-            // Bottom: description overlay (read-only)
+            // Price badge
+            if (widget.photo.price > 0)
+              AnimatedOpacity(
+                opacity: _showOverlay ? 1.0 : 0.0,
+                duration: const Duration(milliseconds: 200),
+                child: SafeArea(
+                  child: Align(
+                    alignment: Alignment.topRight,
+                    child: Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                        decoration: BoxDecoration(
+                          color: AppColors.accentDeep.withValues(alpha: 0.9),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: Text(
+                          '\$${widget.photo.price.toStringAsFixed(widget.photo.price == widget.photo.price.toInt() ? 0 : 2)}',
+                          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 16),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            // Bottom description overlay
             if (widget.photo.description.isNotEmpty)
               AnimatedPositioned(
                 duration: const Duration(milliseconds: 250),

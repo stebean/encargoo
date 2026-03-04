@@ -5,7 +5,7 @@ import '../../../../core/constants/app_colors.dart';
 import '../../../../core/constants/app_text_styles.dart';
 import '../../../auth/presentation/notifiers/auth_notifier.dart';
 import '../../../workspace/presentation/notifiers/workspace_provider.dart';
-import '../../../workspace/presentation/pages/workspace_setup_page.dart';
+import '../notifiers/message_template_provider.dart';
 
 class SettingsPage extends ConsumerWidget {
   const SettingsPage({super.key});
@@ -218,6 +218,10 @@ class SettingsPage extends ConsumerWidget {
             error: (_, __) => const SizedBox(),
           ),
 
+          // ── Mensaje de WhatsApp ──────────────────────────────────────────
+          const SizedBox(height: 24),
+          const _SectionLabel('MENSAJE DE WHATSAPP'),
+          _MessageTemplateEditor(),
           const SizedBox(height: 32),
           // ── Cerrar sesión ─────────────────────────────────────────────────
           OutlinedButton.icon(
@@ -487,6 +491,122 @@ class _SheetTab extends StatelessWidget {
             style: AppTextStyles.labelMedium.copyWith(color: selected ? AppColors.white : AppColors.inkFaint, fontSize: 12),
           ),
         ),
+      ),
+    );
+  }
+}
+
+// ── WhatsApp message template editor ─────────────────────────────────────────
+class _MessageTemplateEditor extends ConsumerStatefulWidget {
+  const _MessageTemplateEditor();
+
+  @override
+  ConsumerState<_MessageTemplateEditor> createState() => _MessageTemplateEditorState();
+}
+
+class _MessageTemplateEditorState extends ConsumerState<_MessageTemplateEditor> {
+  late TextEditingController _ctrl;
+  bool _dirty = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _ctrl = TextEditingController();
+    // Load initial value from provider
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final template = ref.read(messageTemplateProvider).value ?? defaultMessageTemplate;
+      _ctrl.text = template;
+    });
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // Watch to initialize when ready
+    ref.watch(messageTemplateProvider);
+
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: AppColors.parchment,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: AppColors.borderLight),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Plantilla del mensaje de encargo listo',
+            style: AppTextStyles.labelMedium,
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'Usa {nombre} para el nombre del cliente y \${total} para el precio total.',
+            style: AppTextStyles.caption.copyWith(fontStyle: FontStyle.italic, color: AppColors.inkFaint),
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: _ctrl,
+            maxLines: 5,
+            onChanged: (_) => setState(() => _dirty = true),
+            decoration: InputDecoration(
+              hintText: defaultMessageTemplate,
+              filled: true,
+              fillColor: AppColors.cream,
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide(color: AppColors.borderLight)),
+              enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide(color: AppColors.borderLight)),
+              focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: const BorderSide(color: AppColors.accent)),
+              contentPadding: const EdgeInsets.all(12),
+            ),
+            style: AppTextStyles.bodySmall,
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton(
+                  onPressed: () async {
+                    await ref.read(messageTemplateProvider.notifier).reset();
+                    _ctrl.text = defaultMessageTemplate;
+                    setState(() => _dirty = false);
+                  },
+                  style: OutlinedButton.styleFrom(
+                    side: const BorderSide(color: AppColors.borderLight),
+                    foregroundColor: AppColors.inkFaint,
+                  ),
+                  child: const Text('Restablecer'),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: ElevatedButton(
+                  onPressed: _dirty
+                      ? () async {
+                          await ref.read(messageTemplateProvider.notifier).save(_ctrl.text);
+                          setState(() => _dirty = false);
+                          if (mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: const Text('Mensaje guardado'),
+                                duration: const Duration(seconds: 2),
+                                behavior: SnackBarBehavior.floating,
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                              ),
+                            );
+                          }
+                        }
+                      : null,
+                  child: const Text('Guardar'),
+                ),
+              ),
+            ],
+          ),
+        ],
       ),
     );
   }

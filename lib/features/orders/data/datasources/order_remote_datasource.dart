@@ -11,7 +11,7 @@ class OrderRemoteDataSource {
     try {
       final response = await _client
           .from('orders')
-          .select('*, clients(name), profiles(full_name), order_photos(*)')
+          .select('*, clients(name, phone), profiles(full_name), order_photos(*)')
           .eq('workspace_id', workspaceId)
           .order('created_at', ascending: false);
       
@@ -29,7 +29,7 @@ class OrderRemoteDataSource {
     try {
       final response = await _client
           .from('orders')
-          .select('*, clients(name), profiles(full_name), order_photos(*)')
+          .select('*, clients(name, phone), profiles(full_name), order_photos(*)')
           .eq('id', id)
           .single();
       return OrderModel.fromJson(response);
@@ -43,7 +43,7 @@ class OrderRemoteDataSource {
       final response = await _client
           .from('orders')
           .insert(data)
-          .select('*, clients(name), profiles(full_name), order_photos(*)')
+          .select('*, clients(name, phone), profiles(full_name), order_photos(*)')
           .single();
       return OrderModel.fromJson(response);
     } catch (e) {
@@ -57,7 +57,7 @@ class OrderRemoteDataSource {
           .from('orders')
           .update(data)
           .eq('id', id)
-          .select('*, clients(name), profiles(full_name), order_photos(*)')
+          .select('*, clients(name, phone), profiles(full_name), order_photos(*)')
           .single();
       return OrderModel.fromJson(response);
     } catch (e) {
@@ -124,6 +124,17 @@ class OrderRemoteDataSource {
           .eq('id', photoId);
     } catch (e) {
       throw app_ex.DatabaseException('Error al actualizar la descripción: $e');
+    }
+  }
+
+  Future<void> updatePhotoPrice(String photoId, double price) async {
+    try {
+      await _client
+          .from('order_photos')
+          .update({'price': price})
+          .eq('id', photoId);
+    } catch (e) {
+      throw app_ex.DatabaseException('Error al actualizar el precio: $e');
     }
   }
 }

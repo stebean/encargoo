@@ -45,7 +45,7 @@ class OrdersNotifier extends StateNotifier<OrdersState> {
     String? clientId,
     DateTime? deliveryDate,
     String? notes,
-    List<(File, String)> photos = const [],
+    List<(File, String, double)> photos = const [],
   }) async {
     final wid = _workspaceId;
     final uid = _userId;
@@ -60,14 +60,16 @@ class OrdersNotifier extends StateNotifier<OrdersState> {
         'status': 'pendiente',
         'notes': notes,
       });
-      // Upload photos
-      for (final (file, desc) in photos) {
+      // Upload photos with description and price
+      for (int i = 0; i < photos.length; i++) {
+        final (file, desc, price) = photos[i];
         final url = await _dataSource.uploadPhoto(file, order.id);
         await _dataSource.addPhoto({
           'order_id': order.id,
           'photo_url': url,
           'description': desc,
-          'sort_order': photos.indexOf((file, desc)),
+          'sort_order': i,
+          'price': price,
         });
       }
       await loadOrders();
@@ -105,7 +107,7 @@ class OrdersNotifier extends StateNotifier<OrdersState> {
     }
   }
 
-  Future<bool> addPhotoToOrder(String orderId, File file, String description) async {
+  Future<bool> addPhotoToOrder(String orderId, File file, String description, {double price = 0}) async {
     try {
       final url = await _dataSource.uploadPhoto(file, orderId);
       final existingOrder = state.orders.firstWhere((o) => o.id == orderId);
@@ -114,6 +116,7 @@ class OrdersNotifier extends StateNotifier<OrdersState> {
         'photo_url': url,
         'description': description,
         'sort_order': existingOrder.photos.length,
+        'price': price,
       });
       await loadOrders();
       return true;
@@ -137,6 +140,16 @@ class OrdersNotifier extends StateNotifier<OrdersState> {
   Future<bool> updatePhotoDescription(String photoId, String description) async {
     try {
       await _dataSource.updatePhotoDescription(photoId, description);
+      return true;
+    } catch (e) {
+      state = state.copyWith(error: e.toString());
+      return false;
+    }
+  }
+
+  Future<bool> updatePhotoPrice(String photoId, double price) async {
+    try {
+      await _dataSource.updatePhotoPrice(photoId, price);
       return true;
     } catch (e) {
       state = state.copyWith(error: e.toString());

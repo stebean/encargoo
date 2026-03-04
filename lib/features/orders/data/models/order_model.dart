@@ -7,6 +7,7 @@ class OrderPhotoModel extends OrderPhotoEntity {
     required super.photoUrl,
     required super.description,
     required super.sortOrder,
+    super.price,
   });
 
   factory OrderPhotoModel.fromJson(Map<String, dynamic> json) {
@@ -16,6 +17,7 @@ class OrderPhotoModel extends OrderPhotoEntity {
       photoUrl: json['photo_url'] as String,
       description: json['description'] as String? ?? '',
       sortOrder: json['sort_order'] as int? ?? 0,
+      price: (json['price'] as num?)?.toDouble() ?? 0.0,
     );
   }
 
@@ -25,6 +27,7 @@ class OrderPhotoModel extends OrderPhotoEntity {
       'photo_url': photoUrl,
       'description': description,
       'sort_order': sortOrder,
+      'price': price,
     };
   }
 }
@@ -35,6 +38,7 @@ class OrderModel extends OrderEntity {
     required super.workspaceId,
     super.clientId,
     super.clientName,
+    super.clientPhone,
     required super.createdBy,
     super.createdByName,
     required super.createdAt,
@@ -66,6 +70,7 @@ class OrderModel extends OrderEntity {
       workspaceId: json['workspace_id'] as String,
       clientId: json['client_id'] as String?,
       clientName: json['clients'] != null ? (json['clients'] as Map<String, dynamic>)['name'] as String? : null,
+      clientPhone: json['clients'] != null ? (json['clients'] as Map<String, dynamic>)['phone'] as String? : null,
       createdBy: json['created_by'] as String,
       createdByName: json['profiles'] is Map ? (json['profiles'] as Map)['full_name'] as String? : (json['profiles'] is List && (json['profiles'] as List).isNotEmpty) ? ((json['profiles'] as List).first as Map)['full_name'] as String? : null,
       createdAt: DateTime.parse(json['created_at'] as String),
