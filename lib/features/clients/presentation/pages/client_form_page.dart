@@ -57,7 +57,17 @@ class _ClientFormPageState extends ConsumerState<ClientFormPage> {
       ok = await notifier.updateClient(widget.clientId!, name: _nameCtrl.text.trim(), phone: phone, notes: notes);
     }
     setState(() => _loading = false);
-    if (ok && mounted) context.pop();
+    if (ok && mounted) {
+      if (widget.clientId == null) {
+        // Devolver el ID del cliente recién creado para auto-seleccionarlo
+        final created = ref.read(clientsProvider).clients
+            .where((c) => c.name == _nameCtrl.text.trim())
+            .lastOrNull;
+        context.pop(created?.id);
+      } else {
+        context.pop();
+      }
+    }
   }
 
   @override

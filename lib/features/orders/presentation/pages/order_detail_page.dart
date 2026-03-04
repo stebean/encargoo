@@ -8,6 +8,7 @@ import '../../../../core/utils/date_helper.dart';
 import '../../presentation/notifiers/orders_notifier.dart';
 import '../../domain/entities/order_entity.dart';
 import '../../../../shared/widgets/status_badge.dart';
+import '../../../auth/presentation/notifiers/auth_notifier.dart';
 
 class OrderDetailPage extends ConsumerWidget {
   final String id;
@@ -17,6 +18,7 @@ class OrderDetailPage extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final state = ref.watch(ordersProvider);
     final order = state.orders.where((o) => o.id == id).firstOrNull;
+    final canDelete = ref.watch(authProvider).user?.canDelete ?? false;
 
     if (order == null) {
       return Scaffold(
@@ -34,10 +36,11 @@ class OrderDetailPage extends ConsumerWidget {
             icon: const Icon(Icons.edit_outlined, size: 20),
             onPressed: () => context.go('/encargos/$id/editar'),
           ),
-          IconButton(
-            icon: const Icon(Icons.delete_outline_rounded, size: 20, color: AppColors.danger),
-            onPressed: () => _confirmDelete(context, ref, order),
-          ),
+          if (canDelete)
+            IconButton(
+              icon: const Icon(Icons.delete_outline_rounded, size: 20, color: AppColors.danger),
+              onPressed: () => _confirmDelete(context, ref, order),
+            ),
         ],
       ),
       body: SingleChildScrollView(
@@ -80,7 +83,7 @@ class OrderDetailPage extends ConsumerWidget {
             if (order.photos.isNotEmpty) ...[
               Text('Fotos (${order.photos.length})', style: AppTextStyles.headlineSmall),
               const SizedBox(height: 12),
-              ...order.photos.map((photo) => _PhotoItem(photo: photo, orderId: id)),
+              ...order.photos.map((photo) => _PhotoItem(photo: photo)),
             ] else
               Container(
                 padding: const EdgeInsets.all(20),
@@ -184,41 +187,158 @@ class _StatusSelector extends ConsumerWidget {
   }
 }
 
-class _PhotoItem extends ConsumerWidget {
+class _PhotoItem extends StatelessWidget {
   final OrderPhotoEntity photo;
-  final String orderId;
-  const _PhotoItem({required this.photo, required this.orderId});
+  const _PhotoItem({required this.photo});
+
+  void _openFullscreen(BuildContext context) {
+    Navigator.of(context).push(
+      PageRouteBuilder(
+        opaque: false,
+        barrierColor: Colors.black87,
+        pageBuilder: (_, __, ___) => _PhotoReadOnlyViewer(photo: photo),
+        transitionsBuilder: (_, anim, __, child) =>
+            FadeTransition(opacity: anim, child: child),
+      ),
+    );
+  }
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      decoration: BoxDecoration(
-        color: AppColors.parchment,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppColors.borderLight),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          ClipRRect(
-            borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
-            child: CachedNetworkImage(
-              imageUrl: photo.photoUrl,
-              width: double.infinity,
-              height: 200,
-              fit: BoxFit.cover,
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: () => _openFullscreen(context),
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 12),
+        decoration: BoxDecoration(
+          color: AppColors.parchment,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: AppColors.borderLight),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Stack(
+              children: [
+                ClipRRect(
+                  borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
+                  child: CachedNetworkImage(
+                    imageUrl: photo.photoUrl,
+                    width: double.infinity,
+                    height: 200,
+                    fit: BoxFit.cover,
+                  ),
+                ),
+                Positioned(
+                  bottom: 8,
+                  right: 8,
+                  child: Container(
+                    padding: const EdgeInsets.all(4),
+                    decoration: BoxDecoration(
+                      color: Colors.black54,
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: const Icon(Icons.fullscreen_rounded, size: 16, color: Colors.white),
+                  ),
+                ),
+              ],
             ),
-          ),
-          if (photo.description.isNotEmpty)
-            Padding(
-              padding: const EdgeInsets.all(12),
-              child: Text(
-                photo.description,
-                style: AppTextStyles.bodyMedium.copyWith(fontStyle: FontStyle.italic),
+            if (photo.description.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.all(12),
+                child: Text(
+                  photo.description,
+                  style: AppTextStyles.bodyMedium.copyWith(fontStyle: FontStyle.italic),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ── Read-only fullscreen photo viewer ─────────────────────────────────────────
+class _PhotoReadOnlyViewer extends StatefulWidget {
+  final OrderPhotoEntity photo;
+  const _PhotoReadOnlyViewer({required this.photo});
+
+  @override
+  State<_PhotoReadOnlyViewer> createState() => _PhotoReadOnlyViewerState();
+}
+
+class _PhotoReadOnlyViewerState extends State<_PhotoReadOnlyViewer> {
+  bool _showOverlay = true;
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.transparent,
+      body: GestureDetector(
+        onTap: () => setState(() => _showOverlay = !_showOverlay),
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            // Full image with zoom
+            InteractiveViewer(
+              minScale: 0.8,
+              maxScale: 4.0,
+              child: CachedNetworkImage(
+                imageUrl: widget.photo.photoUrl,
+                fit: BoxFit.contain,
+                placeholder: (_, __) => const Center(child: CircularProgressIndicator(color: Colors.white54)),
+                errorWidget: (_, __, ___) => const Center(child: Icon(Icons.broken_image_outlined, color: Colors.white54, size: 48)),
               ),
             ),
-        ],
+            // Close button
+            AnimatedOpacity(
+              opacity: _showOverlay ? 1.0 : 0.0,
+              duration: const Duration(milliseconds: 200),
+              child: SafeArea(
+                child: Align(
+                  alignment: Alignment.topLeft,
+                  child: Padding(
+                    padding: const EdgeInsets.all(8),
+                    child: CircleAvatar(
+                      backgroundColor: Colors.black54,
+                      child: IconButton(
+                        icon: const Icon(Icons.close_rounded, color: Colors.white, size: 20),
+                        onPressed: () => Navigator.of(context).pop(),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            // Bottom: description overlay (read-only)
+            if (widget.photo.description.isNotEmpty)
+              AnimatedPositioned(
+                duration: const Duration(milliseconds: 250),
+                curve: Curves.easeInOut,
+                bottom: _showOverlay ? 0 : -200,
+                left: 0,
+                right: 0,
+                child: Container(
+                  decoration: const BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.bottomCenter,
+                      end: Alignment.topCenter,
+                      colors: [Color(0xDD000000), Color(0x88000000), Colors.transparent],
+                    ),
+                  ),
+                  padding: EdgeInsets.only(
+                    left: 20,
+                    right: 20,
+                    top: 32,
+                    bottom: MediaQuery.of(context).padding.bottom + 20,
+                  ),
+                  child: Text(
+                    widget.photo.description,
+                    style: const TextStyle(color: Colors.white, fontSize: 15, height: 1.5),
+                  ),
+                ),
+              ),
+          ],
+        ),
       ),
     );
   }

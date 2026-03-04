@@ -5,11 +5,9 @@ import '../../../../core/constants/app_colors.dart';
 import '../../../../core/constants/app_text_styles.dart';
 import '../../../auth/presentation/notifiers/auth_notifier.dart';
 import '../../../orders/presentation/notifiers/orders_notifier.dart';
-import '../../../orders/domain/entities/order_entity.dart';
+import '../../../workspace/presentation/notifiers/workspace_provider.dart';
 import '../../../../shared/widgets/order_card.dart';
 import '../../../../shared/widgets/mini_calendar.dart';
-
-enum HomeFilter { todos, urgentes, atrasados }
 
 class HomePage extends ConsumerStatefulWidget {
   const HomePage({super.key});
@@ -19,8 +17,6 @@ class HomePage extends ConsumerStatefulWidget {
 }
 
 class _HomePageState extends ConsumerState<HomePage> {
-  HomeFilter _filter = HomeFilter.todos;
-
   @override
   void initState() {
     super.initState();
@@ -29,21 +25,47 @@ class _HomePageState extends ConsumerState<HomePage> {
     });
   }
 
+  void _showWorkspaceMenu(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: AppColors.cream,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (_) => _WorkspaceSwitcherSheet(
+        onCreateNew: () {
+          Navigator.pop(context);
+          _showWorkspaceSetup(context, startCreating: true);
+        },
+        onJoinWithCode: () {
+          Navigator.pop(context);
+          _showWorkspaceSetup(context, startCreating: false);
+        },
+      ),
+    );
+  }
+
+  void _showWorkspaceSetup(BuildContext context, {bool startCreating = true}) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: AppColors.cream,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (ctx) => _WorkspaceFormSheet(startCreating: startCreating),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final ordersState = ref.watch(ordersProvider);
     final notifier = ref.read(ordersProvider.notifier);
     final user = ref.watch(authProvider).user;
+    final workspace = ref.watch(workspaceProvider);
+    final upcoming = notifier.upcoming;
 
-    List<OrderEntity> filtered;
-    switch (_filter) {
-      case HomeFilter.urgentes:
-        filtered = notifier.urgent;
-      case HomeFilter.atrasados:
-        filtered = notifier.overdue;
-      case HomeFilter.todos:
-        filtered = notifier.upcoming;
-    }
+    final workspaceName = workspace.when(
+      data: (ws) => ws?.name ?? 'Encargoo',
+      loading: () => 'Encargoo',
+      error: (_, __) => 'Encargoo',
+    );
 
     return Scaffold(
       backgroundColor: AppColors.cream,
@@ -55,12 +77,35 @@ class _HomePageState extends ConsumerState<HomePage> {
             pinned: false,
             expandedHeight: 0,
             flexibleSpace: null,
-            title: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text('Encargoo', style: AppTextStyles.headlineLarge.copyWith(color: AppColors.accent)),
-                Text('Hola ${user?.fullName.split(' ').first ?? ''}', style: AppTextStyles.caption),
-              ],
+            title: GestureDetector(
+              onTap: () => _showWorkspaceMenu(context),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Flexible(
+                    child: Text(
+                      workspaceName,
+                      style: AppTextStyles.headlineLarge.copyWith(color: AppColors.accent),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  const SizedBox(width: 4),
+                  const Icon(Icons.keyboard_arrow_down_rounded, color: AppColors.accent, size: 22),
+                ],
+              ),
+            ),
+            bottom: PreferredSize(
+              preferredSize: const Size.fromHeight(16),
+              child: Padding(
+                padding: const EdgeInsets.only(left: 16, bottom: 4),
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    'Hola ${user?.fullName.split(' ').first ?? ''}',
+                    style: AppTextStyles.caption,
+                  ),
+                ),
+              ),
             ),
             actions: [
               IconButton(
@@ -77,32 +122,18 @@ class _HomePageState extends ConsumerState<HomePage> {
           ),
           SliverToBoxAdapter(
             child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text('Próximas entregas', style: AppTextStyles.headlineSmall),
-                  const SizedBox(height: 12),
-                  // Filter chips
-                  SingleChildScrollView(
-                    scrollDirection: Axis.horizontal,
-                    child: Row(
-                      children: [
-                        _FilterChip(label: 'Todos', icon: Icons.list_rounded, selected: _filter == HomeFilter.todos, onTap: () => setState(() => _filter = HomeFilter.todos)),
-                        const SizedBox(width: 8),
-                        _FilterChip(label: 'Urgentes', icon: Icons.timer_outlined, selected: _filter == HomeFilter.urgentes, onTap: () => setState(() => _filter = HomeFilter.urgentes), color: AppColors.accent),
-                        const SizedBox(width: 8),
-                        _FilterChip(label: 'Atrasados', icon: Icons.warning_amber_rounded, selected: _filter == HomeFilter.atrasados, onTap: () => setState(() => _filter = HomeFilter.atrasados), color: AppColors.danger),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+              child: const Text('Próximas entregas', style: AppTextStyles.headlineSmall),
             ),
           ),
           if (ordersState.loading)
-            const SliverToBoxAdapter(child: Padding(padding: EdgeInsets.all(40), child: Center(child: CircularProgressIndicator(color: AppColors.accent))))
-          else if (filtered.isEmpty)
+            const SliverToBoxAdapter(
+              child: Padding(
+                padding: EdgeInsets.all(40),
+                child: Center(child: CircularProgressIndicator(color: AppColors.accent)),
+              ),
+            )
+          else if (upcoming.isEmpty)
             SliverToBoxAdapter(
               child: Padding(
                 padding: const EdgeInsets.all(40),
@@ -121,55 +152,208 @@ class _HomePageState extends ConsumerState<HomePage> {
                 (ctx, i) => Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
                   child: OrderCard(
-                    order: filtered[i],
-                    onTap: () => context.go('/encargos/${filtered[i].id}'),
+                    order: upcoming[i],
+                    onTap: () => context.go('/encargos/${upcoming[i].id}'),
                   ),
                 ),
-                childCount: filtered.length,
+                childCount: upcoming.length,
               ),
             ),
           const SliverToBoxAdapter(child: SizedBox(height: 24)),
         ],
       ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: () => context.go('/encargos/nuevo'),
-        tooltip: 'Nuevo encargo',
-        child: const Icon(Icons.add_rounded),
+    );
+  }
+}
+
+// ── Workspace switcher bottom sheet ──────────────────────────────────────────
+class _WorkspaceSwitcherSheet extends StatelessWidget {
+  final VoidCallback onCreateNew;
+  final VoidCallback onJoinWithCode;
+  const _WorkspaceSwitcherSheet({required this.onCreateNew, required this.onJoinWithCode});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(24, 24, 24, 32),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Center(child: Container(width: 40, height: 4, decoration: BoxDecoration(color: AppColors.borderLight, borderRadius: BorderRadius.circular(2)))),
+          const SizedBox(height: 20),
+          const Align(
+            alignment: Alignment.centerLeft,
+            child: Text('Cambiar espacio de trabajo', style: AppTextStyles.headlineSmall),
+          ),
+          const SizedBox(height: 20),
+          _SheetOption(
+            icon: Icons.add_circle_outline_rounded,
+            label: 'Crear nuevo espacio de trabajo',
+            onTap: onCreateNew,
+          ),
+          const SizedBox(height: 10),
+          _SheetOption(
+            icon: Icons.vpn_key_outlined,
+            label: 'Unirse con código',
+            onTap: onJoinWithCode,
+          ),
+        ],
       ),
     );
   }
 }
 
-class _FilterChip extends StatelessWidget {
-  final String label;
+class _SheetOption extends StatelessWidget {
   final IconData icon;
-  final bool selected;
+  final String label;
   final VoidCallback onTap;
-  final Color? color;
-
-  const _FilterChip({required this.label, required this.icon, required this.selected, required this.onTap, this.color});
+  const _SheetOption({required this.icon, required this.label, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
-    final c = color ?? AppColors.accent;
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        decoration: BoxDecoration(
+          color: AppColors.parchment,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: AppColors.borderLight),
+        ),
+        child: Row(children: [
+          Icon(icon, size: 20, color: AppColors.accent),
+          const SizedBox(width: 14),
+          Text(label, style: AppTextStyles.bodyMedium),
+          const Spacer(),
+          const Icon(Icons.chevron_right_rounded, size: 18, color: AppColors.inkFaint),
+        ]),
+      ),
+    );
+  }
+}
+
+// ── Workspace form bottom sheet ───────────────────────────────────────────────
+class _WorkspaceFormSheet extends ConsumerStatefulWidget {
+  final bool startCreating;
+  const _WorkspaceFormSheet({required this.startCreating});
+
+  @override
+  ConsumerState<_WorkspaceFormSheet> createState() => _WorkspaceFormSheetState();
+}
+
+class _WorkspaceFormSheetState extends ConsumerState<_WorkspaceFormSheet> {
+  late bool _isCreating;
+  final _nameCtrl = TextEditingController();
+  final _codeCtrl = TextEditingController();
+  final _form = GlobalKey<FormState>();
+
+  @override
+  void initState() {
+    super.initState();
+    _isCreating = widget.startCreating;
+  }
+
+  @override
+  void dispose() {
+    _nameCtrl.dispose();
+    _codeCtrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _submit() async {
+    if (!(_form.currentState?.validate() ?? false)) return;
+    final notifier = ref.read(authProvider.notifier);
+    bool ok;
+    if (_isCreating) {
+      ok = await notifier.createWorkspace(_nameCtrl.text.trim());
+    } else {
+      ok = await notifier.joinWorkspace(_codeCtrl.text.trim());
+    }
+    if (ok && mounted) Navigator.pop(context);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final auth = ref.watch(authProvider);
+    final bottom = MediaQuery.of(context).viewInsets.bottom;
+
+    return Padding(
+      padding: EdgeInsets.fromLTRB(24, 24, 24, bottom + 24),
+      child: Form(
+        key: _form,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Center(child: Container(width: 40, height: 4, decoration: BoxDecoration(color: AppColors.borderLight, borderRadius: BorderRadius.circular(2)))),
+            const SizedBox(height: 20),
+            Row(children: [
+              Container(
+                padding: const EdgeInsets.all(4),
+                decoration: BoxDecoration(color: AppColors.borderLight.withValues(alpha: 0.5), borderRadius: BorderRadius.circular(10)),
+                child: Row(children: [
+                  _Tab(label: 'Crear', selected: _isCreating, onTap: () => setState(() => _isCreating = true)),
+                  _Tab(label: 'Unirse', selected: !_isCreating, onTap: () => setState(() => _isCreating = false)),
+                ]),
+              ),
+            ]),
+            const SizedBox(height: 20),
+            if (_isCreating)
+              TextFormField(
+                controller: _nameCtrl,
+                autofocus: true,
+                decoration: const InputDecoration(labelText: 'Nombre del espacio de trabajo', hintText: 'Ej. Taller de Costura', prefixIcon: Icon(Icons.workspaces_outlined, size: 18)),
+                validator: (v) => (v?.isEmpty ?? true) ? 'Escribe un nombre' : null,
+              )
+            else
+              TextFormField(
+                controller: _codeCtrl,
+                autofocus: true,
+                textCapitalization: TextCapitalization.characters,
+                maxLength: 6,
+                decoration: const InputDecoration(labelText: 'Código de acceso', hintText: 'A1B2C3', prefixIcon: Icon(Icons.vpn_key_outlined, size: 18), counterText: ''),
+                style: const TextStyle(letterSpacing: 4, fontWeight: FontWeight.w700, fontSize: 18),
+                validator: (v) => ((v?.length ?? 0) < 6) ? 'Código de 6 caracteres' : null,
+              ),
+            if (auth.error != null) ...[
+              const SizedBox(height: 10),
+              Text(auth.error!, style: AppTextStyles.bodySmall.copyWith(color: AppColors.danger)),
+            ],
+            const SizedBox(height: 20),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton(
+                onPressed: auth.loading ? null : _submit,
+                child: auth.loading
+                    ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.white))
+                    : Text(_isCreating ? 'Crear espacio de trabajo' : 'Unirme'),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _Tab extends StatelessWidget {
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+  const _Tab({required this.label, required this.selected, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
     return GestureDetector(
       onTap: onTap,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 7),
         decoration: BoxDecoration(
-          color: selected ? c : AppColors.parchment,
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: selected ? c : AppColors.border),
+          color: selected ? AppColors.accent : Colors.transparent,
+          borderRadius: BorderRadius.circular(8),
         ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(icon, size: 14, color: selected ? AppColors.white : c),
-            const SizedBox(width: 6),
-            Text(label, style: AppTextStyles.labelMedium.copyWith(color: selected ? AppColors.white : AppColors.inkLight)),
-          ],
-        ),
+        child: Text(label, style: AppTextStyles.labelMedium.copyWith(color: selected ? AppColors.white : AppColors.inkFaint)),
       ),
     );
   }

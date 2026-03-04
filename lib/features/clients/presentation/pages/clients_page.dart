@@ -7,6 +7,7 @@ import '../../../../core/constants/app_colors.dart';
 import '../../../../core/constants/app_text_styles.dart';
 import '../notifiers/clients_notifier.dart';
 import '../../domain/entities/client_entity.dart';
+import '../../../../features/auth/presentation/notifiers/auth_notifier.dart';
 
 class ClientsPage extends ConsumerStatefulWidget {
   const ClientsPage({super.key});
@@ -36,6 +37,7 @@ class _ClientsPageState extends ConsumerState<ClientsPage> {
     final state = ref.watch(clientsProvider);
     final notifier = ref.read(clientsProvider.notifier);
     final results = notifier.search(_query);
+    final canDelete = ref.watch(authProvider).user?.canDelete ?? false;
 
     return Scaffold(
       backgroundColor: AppColors.cream,
@@ -92,6 +94,7 @@ class _ClientsPageState extends ConsumerState<ClientsPage> {
                         separatorBuilder: (_, __) => const SizedBox(height: 10),
                         itemBuilder: (_, i) => _ClientCard(
                           client: results[i],
+                          canDelete: canDelete,
                           onEdit: () => context.go('/clientes/${results[i].id}/editar'),
                           onDelete: () => _confirmDelete(context, ref, results[i]),
                         ),
@@ -125,10 +128,11 @@ class _ClientsPageState extends ConsumerState<ClientsPage> {
 
 class _ClientCard extends StatelessWidget {
   final ClientEntity client;
+  final bool canDelete;
   final VoidCallback onEdit;
   final VoidCallback onDelete;
 
-  const _ClientCard({required this.client, required this.onEdit, required this.onDelete});
+  const _ClientCard({required this.client, required this.canDelete, required this.onEdit, required this.onDelete});
 
   Future<void> _openWhatsApp(String phone) async {
     // Remove everything but plus and digits to clean the input
@@ -200,7 +204,8 @@ class _ClientCard extends StatelessWidget {
             icon: const Icon(Icons.more_vert_rounded, size: 18, color: AppColors.inkFaint),
             itemBuilder: (_) => [
               const PopupMenuItem(value: 'edit', child: Text('Editar', style: AppTextStyles.bodyMedium)),
-              PopupMenuItem(value: 'delete', child: Text('Eliminar', style: AppTextStyles.bodyMedium.copyWith(color: AppColors.danger))),
+              if (canDelete)
+                PopupMenuItem(value: 'delete', child: Text('Eliminar', style: AppTextStyles.bodyMedium.copyWith(color: AppColors.danger))),
             ],
             onSelected: (v) { if (v == 'edit') {
               onEdit();

@@ -150,7 +150,7 @@ class AppTheme {
       ),
       snackBarTheme: SnackBarThemeData(
         backgroundColor: AppColors.ink,
-        contentTextStyle: AppTextStyles.bodyMedium.copyWith(color: AppColors.cream),
+        contentTextStyle: AppTextStyles.bodyMedium.copyWith(color: AppColors.white),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
         behavior: SnackBarBehavior.floating,
       ),

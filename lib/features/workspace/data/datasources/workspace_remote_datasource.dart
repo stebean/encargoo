@@ -21,10 +21,7 @@ class WorkspaceRemoteDataSource {
           .insert({'name': name, 'access_code': code})
           .select()
           .single();
-      final ws = WorkspaceModel.fromJson(workspace);
-      // Update profile workspace_id
-      await _client.from('profiles').update({'workspace_id': ws.id}).eq('id', userId);
-      return ws;
+      return WorkspaceModel.fromJson(workspace);
     } catch (e) {
       throw WorkspaceException('Error al crear el workspace: $e');
     }
@@ -38,14 +35,29 @@ class WorkspaceRemoteDataSource {
           .eq('access_code', code.toUpperCase())
           .maybeSingle();
       if (response == null) {
-        throw const WorkspaceException('Código de acceso no encontrado');
+        throw const WorkspaceException('Código de acceso no encontrado. Verifica que sea correcto.');
       }
       final ws = WorkspaceModel.fromJson(response);
-      await _client.from('profiles').update({'workspace_id': ws.id}).eq('id', userId);
+      // Update workspace_id only (role column requires SQL migration)
+      await _client
+          .from('profiles')
+          .update({'workspace_id': ws.id})
+          .eq('id', userId);
       return ws;
     } catch (e) {
       if (e is WorkspaceException) rethrow;
       throw WorkspaceException('Error al unirse al workspace: $e');
+    }
+  }
+
+  Future<void> leaveWorkspace(String userId) async {
+    try {
+      await _client
+          .from('profiles')
+          .update({'workspace_id': null})
+          .eq('id', userId);
+    } catch (e) {
+      throw WorkspaceException('Error al salir del workspace: $e');
     }
   }
 
@@ -66,11 +78,21 @@ class WorkspaceRemoteDataSource {
     try {
       final response = await _client
           .from('profiles')
-          .select('id, full_name')
+          .select('id, full_name, role')
           .eq('workspace_id', workspaceId);
       return List<Map<String, dynamic>>.from(response as List);
     } catch (e) {
-      throw WorkspaceException('Error al obtener miembros: $e');
+      // Fallback without role if column not yet migrated
+      try {
+        final response = await _client
+            .from('profiles')
+            .select('id, full_name')
+            .eq('workspace_id', workspaceId);
+        return List<Map<String, dynamic>>.from(response as List);
+      } catch (_) {
+        throw WorkspaceException('Error al obtener miembros: $e');
+      }
     }
   }
 }
+

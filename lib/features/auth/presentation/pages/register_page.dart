@@ -41,9 +41,9 @@ class _RegisterPageState extends ConsumerState<RegisterPage> {
     final auth = ref.watch(authProvider);
 
     return Scaffold(
-      backgroundColor: AppColors.cream,
+      backgroundColor: const Color(0xFFF5F0E8), // crema cálida solo en registro
       appBar: AppBar(
-        backgroundColor: AppColors.cream,
+        backgroundColor: const Color(0xFFF5F0E8),
         elevation: 0,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_ios_rounded, size: 18),

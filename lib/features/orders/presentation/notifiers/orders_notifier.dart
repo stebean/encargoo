@@ -134,6 +134,16 @@ class OrdersNotifier extends StateNotifier<OrdersState> {
     }
   }
 
+  Future<bool> updatePhotoDescription(String photoId, String description) async {
+    try {
+      await _dataSource.updatePhotoDescription(photoId, description);
+      return true;
+    } catch (e) {
+      state = state.copyWith(error: e.toString());
+      return false;
+    }
+  }
+
   Future<bool> deleteOrder(String id) async {
     try {
       final existingOrder = state.orders.where((o) => o.id == id).firstOrNull;

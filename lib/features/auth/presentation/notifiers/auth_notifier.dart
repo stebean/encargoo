@@ -48,12 +48,19 @@ class AuthNotifier extends StateNotifier<AuthState> {
     try {
       final profile = await _client.from('profiles').select().eq('id', userId).maybeSingle();
       if (profile != null) {
+        // Safely read role — column may not exist yet if SQL migration hasn't been run
+        UserRole role = UserRole.member;
+        try {
+          final roleStr = profile['role'] as String? ?? 'member';
+          role = roleStr == 'owner' ? UserRole.owner : UserRole.member;
+        } catch (_) {}
         state = state.copyWith(
           user: UserEntity(
             id: userId,
             email: _client.auth.currentUser?.email ?? '',
             fullName: profile['full_name'] as String? ?? '',
             workspaceId: profile['workspace_id'] as String?,
+            role: role,
           ),
           loading: false,
         );
@@ -102,34 +109,74 @@ class AuthNotifier extends StateNotifier<AuthState> {
 
   Future<bool> createWorkspace(String name) async {
     if (state.user == null) return false;
+    state = state.copyWith(loading: true, clearError: true);
     try {
       final ws = await _workspaceDataSource.createWorkspace(state.user!.id, name);
-      state = state.copyWith(user: UserEntity(
-        id: state.user!.id,
-        email: state.user!.email,
-        fullName: state.user!.fullName,
-        workspaceId: ws.id,
-      ));
+      state = state.copyWith(
+        loading: false,
+        user: UserEntity(
+          id: state.user!.id,
+          email: state.user!.email,
+          fullName: state.user!.fullName,
+          workspaceId: ws.id,
+          role: UserRole.owner, // tracked in-memory until SQL migration
+        ),
+      );
       return true;
     } on app_ex.WorkspaceException catch (e) {
-      state = state.copyWith(error: e.message);
+      state = state.copyWith(loading: false, error: e.message);
+      return false;
+    } catch (e) {
+      state = state.copyWith(loading: false, error: 'Error al crear espacio de trabajo');
       return false;
     }
   }
 
   Future<bool> joinWorkspace(String code) async {
     if (state.user == null) return false;
+    state = state.copyWith(loading: true, clearError: true);
     try {
       final ws = await _workspaceDataSource.joinWorkspace(state.user!.id, code);
-      state = state.copyWith(user: UserEntity(
-        id: state.user!.id,
-        email: state.user!.email,
-        fullName: state.user!.fullName,
-        workspaceId: ws.id,
-      ));
+      state = state.copyWith(
+        loading: false,
+        user: UserEntity(
+          id: state.user!.id,
+          email: state.user!.email,
+          fullName: state.user!.fullName,
+          workspaceId: ws.id,
+          role: UserRole.member,
+        ),
+      );
       return true;
     } on app_ex.WorkspaceException catch (e) {
-      state = state.copyWith(error: e.message);
+      print('joinWorkspace error: ${e.message}');
+      state = state.copyWith(loading: false, error: e.message);
+      return false;
+    } catch (e) {
+      print('joinWorkspace unexpected: $e');
+      state = state.copyWith(loading: false, error: 'Error al unirse al espacio de trabajo');
+      return false;
+    }
+  }
+
+  Future<bool> leaveWorkspace() async {
+    if (state.user == null) return false;
+    state = state.copyWith(loading: true, clearError: true);
+    try {
+      await _workspaceDataSource.leaveWorkspace(state.user!.id);
+      state = state.copyWith(
+        loading: false,
+        user: UserEntity(
+          id: state.user!.id,
+          email: state.user!.email,
+          fullName: state.user!.fullName,
+          workspaceId: null,
+          role: UserRole.member,
+        ),
+      );
+      return true;
+    } catch (e) {
+      state = state.copyWith(loading: false, error: 'Error al salir del espacio de trabajo');
       return false;
     }
   }

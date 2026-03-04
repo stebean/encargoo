@@ -124,6 +124,9 @@ create policy "Workspace members read photos"
 create policy "Workspace members insert photos"
   on order_photos for insert
   with check (order_id in (select id from orders where workspace_id = get_user_workspace_id()));
+create policy "Workspace members update photos"
+  on order_photos for update
+  using (order_id in (select id from orders where workspace_id = get_user_workspace_id()));
 create policy "Workspace members delete photos"
   on order_photos for delete
   using (auth.uid() is not null);

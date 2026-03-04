@@ -115,4 +115,15 @@ class OrderRemoteDataSource {
       throw app_ex.DatabaseException('Error al eliminar la foto: $e');
     }
   }
+
+  Future<void> updatePhotoDescription(String photoId, String description) async {
+    try {
+      await _client
+          .from('order_photos')
+          .update({'description': description})
+          .eq('id', photoId);
+    } catch (e) {
+      throw app_ex.DatabaseException('Error al actualizar la descripción: $e');
+    }
+  }
 }
