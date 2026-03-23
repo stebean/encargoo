@@ -1,10 +1,10 @@
 # En-cargoo 📦
 
-Sistema de gestión de pedidos y encargos diseñado para talleres de costura y negocios familiares.
+Sistema de gestión de pedidos y encargos diseñado para negocios pequeños o medianos.
 
 ## 🚀 Cómo empezar
 
-Este proyecto utiliza **Flutter** y **Supabase** como backend. Para ejecutarlo localmente y conectar con tu propio proyecto de Supabase, sigue estos pasos:
+Este proyecto utiliza **Flutter** y **Supabase**. Para ejecutarlo localmente y conectar con tu propio proyecto de Supabase, sigue estos pasos:
 
 ### 1. Requisitos previos
 - [Flutter SDK](https://docs.flutter.dev/get-started/install) (>= 3.2.0)
@@ -36,10 +36,10 @@ flutter pub get
 flutter run
 ```
 
-## 🛠 Estructura del Proyecto
+## Estructura del Proyecto
 - `lib/core`: Configuración global, temas, rutas y constantes.
 - `lib/features`: Funcionalidades divididas por módulos.
 - `lib/shared`: Widgets y modelos compartidos.
 
 ## 📄 Licencia
-Este proyecto es de código abierto. Siéntete libre de usarlo y adaptarlo para tu propio taller.
+Este proyecto está bajo la **Licencia MIT**. Para más detalles, consulta el archivo [LICENSE](LICENSE).
