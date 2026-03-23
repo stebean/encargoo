@@ -15,7 +15,7 @@ Este proyecto utiliza **Flutter** y **Supabase**. Para ejecutarlo localmente y c
 2. Ve a **Settings > API** para obtener tu:
    - `Project URL`
    - `Anon Key`
-3. Ejecuta los scripts SQL que se encuentran en la carpeta del proyecto (si los hay) para configurar las tablas necesarias.
+3. Ejecuta los scripts SQL en orden que se encuentran en `/supabase/migrations/` en el **SQL Editor** de tu panel de Supabase para configurar las tablas y políticas de seguridad (RLS). Comienza por `supabase_setup.sql`.
 
 ### 3. Configuración local
 1. Clona este repositorio.
@@ -40,6 +40,7 @@ flutter run
 - `lib/core`: Configuración global, temas, rutas y constantes.
 - `lib/features`: Funcionalidades divididas por módulos.
 - `lib/shared`: Widgets y modelos compartidos.
+- `supabase/migrations`: Scripts de base de datos para configurar el backend.
 
 ## 📄 Licencia
 Este proyecto está bajo la **Licencia MIT**. Para más detalles, consulta el archivo [LICENSE](LICENSE).
