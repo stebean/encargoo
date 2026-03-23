@@ -15,7 +15,8 @@ Este proyecto utiliza **Flutter** y **Supabase**. Para ejecutarlo localmente y c
 2. Ve a **Settings > API** para obtener tu:
    - `Project URL`
    - `Anon Key`
-3. Ejecuta los scripts SQL en orden que se encuentran en `/supabase/migrations/` en el **SQL Editor** de tu panel de Supabase para configurar las tablas y políticas de seguridad (RLS). Comienza por `supabase_setup.sql`.
+3. Ve a **Storage** y crea un **Bucket Público** llamado `order-photos`. Esto es necesario para que las imágenes de los encargos se guarden y visualicen correctamente.
+4. Ejecuta los scripts SQL en orden que se encuentran en `/supabase/migrations/` en el **SQL Editor** de tu panel de Supabase para configurar las tablas y políticas de seguridad (RLS). Comienza por `supabase_setup.sql`.
 
 ### 3. Configuración local
 1. Clona este repositorio.

@@ -33,6 +33,7 @@ class OrderDetailPage extends ConsumerWidget {
     final hasPhotos = order.photos.isNotEmpty;
     final totalPrice = order.totalPrice;
     final hasPrice = totalPrice > 0;
+    final isEnabled = order.status != OrderStatus.pendiente;
     final isLista = order.status == OrderStatus.lista;
     final hasClient = order.clientId != null;
     final hasPhone = order.clientPhone != null && order.clientPhone!.isNotEmpty;
@@ -53,13 +54,22 @@ class OrderDetailPage extends ConsumerWidget {
             ),
         ],
       ),
-      // WhatsApp FAB — always visible when there's a client
+      // WhatsApp FAB — only enabled when status is not pending
       floatingActionButton: hasClient
           ? FloatingActionButton(
-              onPressed: () => _sendWhatsApp(context, ref, order, hasPhone),
-              backgroundColor: isLista ? const Color(0xFF25D366) : AppColors.parchment,
-              elevation: isLista ? 4 : 1,
-              child: FaIcon(FontAwesomeIcons.whatsapp, size: 24, color: isLista ? Colors.white : const Color(0xFF25D366)),
+              onPressed: isEnabled ? () => _sendWhatsApp(context, ref, order, hasPhone) : null,
+              backgroundColor: isEnabled 
+                  ? (isLista ? const Color(0xFF25D366) : AppColors.parchment) 
+                  : AppColors.inkFaint.withValues(alpha: 0.1),
+              elevation: isEnabled ? (isLista ? 4 : 1) : 0,
+              disabledElevation: 0,
+              child: FaIcon(
+                FontAwesomeIcons.whatsapp, 
+                size: 24, 
+                color: isEnabled 
+                    ? (isLista ? Colors.white : const Color(0xFF25D366))
+                    : AppColors.inkFaint.withValues(alpha: 0.3),
+              ),
             )
           : null,
       body: SingleChildScrollView(
