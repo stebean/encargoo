@@ -33,7 +33,6 @@ class OrderDetailPage extends ConsumerWidget {
     final hasPhotos = order.photos.isNotEmpty;
     final totalPrice = order.totalPrice;
     final hasPrice = totalPrice > 0;
-    final isEnabled = order.status != OrderStatus.pendiente;
     final isLista = order.status == OrderStatus.lista;
     final hasClient = order.clientId != null;
     final hasPhone = order.clientPhone != null && order.clientPhone!.isNotEmpty;
@@ -54,23 +53,30 @@ class OrderDetailPage extends ConsumerWidget {
             ),
         ],
       ),
-      // WhatsApp FAB — only enabled when status is not pending
+      // WhatsApp FAB — active only when Lista, visually muted otherwise
       floatingActionButton: hasClient
-          ? FloatingActionButton(
-              onPressed: isEnabled ? () => _sendWhatsApp(context, ref, order, hasPhone) : null,
-              backgroundColor: isEnabled 
-                  ? (isLista ? const Color(0xFF25D366) : AppColors.parchment) 
-                  : AppColors.inkFaint.withValues(alpha: 0.1),
-              elevation: isEnabled ? (isLista ? 4 : 1) : 0,
-              disabledElevation: 0,
-              child: FaIcon(
-                FontAwesomeIcons.whatsapp, 
-                size: 24, 
-                color: isEnabled 
-                    ? (isLista ? Colors.white : const Color(0xFF25D366))
-                    : AppColors.inkFaint.withValues(alpha: 0.3),
-              ),
-            )
+          ? isLista
+              // HABILITADO: botón verde con acción
+              ? FloatingActionButton(
+                  onPressed: () => _sendWhatsApp(context, ref, order, hasPhone),
+                  backgroundColor: const Color(0xFF25D366),
+                  elevation: 4,
+                  child: const FaIcon(FontAwesomeIcons.whatsapp, size: 24, color: Colors.white),
+                )
+              // BLOQUEADO: botón decorativo sin onPressed y sin area clicable
+              : AbsorbPointer(
+                  child: FloatingActionButton(
+                    onPressed: null,
+                    backgroundColor: AppColors.inkFaint.withValues(alpha: 0.08),
+                    elevation: 0,
+                    disabledElevation: 0,
+                    child: FaIcon(
+                      FontAwesomeIcons.whatsapp,
+                      size: 24,
+                      color: AppColors.inkFaint.withValues(alpha: 0.25),
+                    ),
+                  ),
+                )
           : null,
       body: SingleChildScrollView(
         padding: const EdgeInsets.fromLTRB(20, 20, 20, 100),
@@ -161,6 +167,8 @@ class OrderDetailPage extends ConsumerWidget {
   }
 
   Future<void> _sendWhatsApp(BuildContext context, WidgetRef ref, OrderEntity order, bool hasPhone) async {
+    // Safety guard: only allow sending when status is lista
+    if (order.status != OrderStatus.lista) return;
     if (!hasPhone) {
       if (!context.mounted) return;
       await showDialog(
